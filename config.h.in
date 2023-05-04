@@ -1,0 +1,13 @@
+#ifndef APP_CONFIG_H
+#define APP_CONFIG_H
+
+// the configured options and settings for dotcpp
+#define APP_NAME "imgui-keys"
+#define APP_VERSION "@imgui-keys_VERSION_MAJOR@.@imgui-keys_VERSION_MINOR@.@imgui-keys_VERSION_PATCH@"
+#define APP_VERSION_MAJOR "@imgui-keys_VERSION_MAJOR@"
+#define APP_VERSION_MINOR "@imgui-keys_VERSION_MINOR@"
+#define APP_VERSION_PATCH "@imgui-keys_VERSION_PATCH@"
+
+#endif // APP_CONFIG_H
+
+
