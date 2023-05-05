@@ -47,3 +47,27 @@ if (imgui_ADDED)
 else()
     message(FATAL_ERROR "IMGUI not found")
 endif()
+
+CPMAddPackage(
+    NAME RtMidi
+    GITHUB_REPOSITORY "thestk/rtmidi"
+    GIT_TAG 5.0.0
+    DOWNLOAD_ONLY True
+    OPTIONS
+        "PA_BUILD_TESTS Off"
+        "PA_BUILD_EXAMPLES Off"
+)
+
+add_library(RtMidi
+    "${RtMidi_SOURCE_DIR}/RtMidi.cpp"
+)
+
+target_include_directories(RtMidi
+    PUBLIC
+        "${RtMidi_SOURCE_DIR}"
+)
+
+target_compile_definitions(RtMidi
+    PUBLIC
+        "-D__WINDOWS_MM__"
+)

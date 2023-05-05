@@ -13,6 +13,7 @@ add_executable(imgui-keys
     src/app.cpp
     src/glad.c
     src/program.cpp
+    src/imgui_knob.cpp
 )
 
 target_compile_features(imgui-keys
@@ -31,6 +32,8 @@ target_link_libraries(imgui-keys
     PRIVATE
         glfw
         imgui
+        RtMidi
+        winmm
 )
 
 
