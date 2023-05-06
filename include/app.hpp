@@ -7,6 +7,8 @@
 
 #include <RtMidi.h>
 
+#define MIDI_CHANNEL_COUNT 16
+
 class App
 {
 public:
@@ -27,7 +29,7 @@ public:
 protected:
     const std::vector<std::string> &_args;
     int _width = 1024;
-    int _height = 525;
+    int _height = 550;
 
     template <class T>
     void SetWindowHandle(T *handle);
@@ -37,18 +39,26 @@ protected:
     RtMidiOut *_midiout = nullptr;
     std::vector<std::string> _portNames;
 
-    int _arpMode = 0;
     std::set<unsigned int> notesDown;
-    unsigned char _octaveShift = 3;
-    unsigned char _velocity = 100;
-    float _noteLength = 0.4f;
-    float _bpm = 100;
     bool pauseMode = true;
     bool recordMode = true;
-    std::vector<unsigned char> _notesToArp;
-    size_t _currentNote = 0;
+    float _bpm = 100;
+
+    struct tChannel
+    {
+        int _arpMode = 0;
+        int _octaveShift = 3;
+        unsigned char _velocity = 100;
+        float _noteLength = 0.4f;
+        std::vector<unsigned char> _notesToArp;
+        size_t _currentNote = 0;
+    } _channels[MIDI_CHANNEL_COUNT];
+
+    void RenderChannel(
+        int channel);
 
     void PianoKey(
+        unsigned char channel,
         const char *label,
         int noteNumberInOctave,
         unsigned char velocity);

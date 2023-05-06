@@ -4,6 +4,7 @@
 #include <chrono>
 #include <glad/glad.h>
 #include <imgui.h>
+#include <sstream>>
 
 #include "imgui_knob.h"
 
@@ -69,28 +70,44 @@ void App::OnResize(int width, int height)
 
 ImVec2 buttonSize(50, 80);
 
+const unsigned char MIDI_NOTE_ON = 144;
+const unsigned char MIDI_NOTE_OFF = 128;
+
 void App::PianoKey(
+    unsigned char channel,
     const char *label,
     int noteNumberInOctave,
     unsigned char velocity)
 {
-    unsigned char note = firstKeyNoteNumber + (_octaveShift * 12) + noteNumberInOctave;
+    unsigned char note = firstKeyNoteNumber + (_channels[channel]._octaveShift * 12) + noteNumberInOctave;
 
     ImGui::Button(label, buttonSize);
 
     if (notesDown.find(note) == notesDown.end() && ImGui::IsItemClicked())
     {
-        std::vector<unsigned char> message = {144, note, velocity};
+        unsigned char state = MIDI_NOTE_ON | channel;
+
+        std::vector<unsigned char> message = {
+            state,
+            note,
+            velocity,
+        };
         _midiout->sendMessage(&message);
         notesDown.insert(note);
         if (recordMode)
         {
-            _notesToArp.push_back(note);
+            _channels[channel]._notesToArp.push_back(note);
         }
     }
     else if (notesDown.find(note) != notesDown.end() && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
     {
-        std::vector<unsigned char> message = {128, note, 0};
+        unsigned char state = MIDI_NOTE_OFF | channel;
+
+        std::vector<unsigned char> message = {
+            state,
+            note,
+            0,
+        };
         _midiout->sendMessage(&message);
         notesDown.erase(note);
     }
@@ -117,90 +134,102 @@ void App::OnFrame()
     auto now = std::chrono::steady_clock::now();
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastNote);
 
-    if (!pauseMode && !recordMode && !_notesToArp.empty())
+    if (!pauseMode && !recordMode)
     {
-        auto notes = std::vector<unsigned char>(_notesToArp);
-
-        if (_arpMode != ArpModes::Order)
+        for (int channel = 0; channel < MIDI_CHANNEL_COUNT; channel++)
         {
-            std::sort(notes.begin(), notes.end());
-        }
-
-        if (_noteLength > 1.0f) _noteLength = 1.0f;
-        if (_noteLength <= 0.0f) _noteLength = 0.01f;
-
-        if (lastPlayerNote != 0 && diff.count() > (msBetweenNotes * _noteLength))
-        {
-            std::vector<unsigned char> message = {
-                128,
-                lastPlayerNote,
-                0,
-            };
-            _midiout->sendMessage(&message);
-            lastPlayerNote = 0;
-        }
-
-        if (diff.count() > msBetweenNotes)
-        {
-            lastPlayerNote = notes[_currentNote];
-            std::vector<unsigned char> message = {
-                144,
-                lastPlayerNote,
-                static_cast<unsigned char>(_velocity),
-            };
-            _midiout->sendMessage(&message);
-            lastNote = now;
-
-            if (_arpMode == ArpModes::Up || _arpMode == ArpModes::Order)
+            if (_channels[channel]._notesToArp.empty())
             {
-                _currentNote++;
-                if (_currentNote >= _notesToArp.size())
-                {
-                    _currentNote = 0;
-                }
+                continue;
             }
-            else if (_arpMode == ArpModes::Down)
-            {
-                if (_currentNote == 0)
-                {
-                    _currentNote = _notesToArp.size() - 1;
-                }
-                else
-                {
-                    _currentNote--;
-                }
-            }
-            else if (_arpMode == ArpModes::Inclusive)
-            {
-                if (currentDirection < 0 && _currentNote == 0)
-                {
-                    currentDirection = 1;
-                }
-                else if (currentDirection > 0 && _currentNote + 1 >= _notesToArp.size())
-                {
-                    currentDirection = -1;
-                }
-                else
-                {
-                    _currentNote += currentDirection;
-                }
-            }
-            else if (_arpMode == ArpModes::Exclusive)
-            {
-                if (currentDirection < 0 && _currentNote == 0)
-                {
-                    currentDirection = 1;
-                }
-                else if (currentDirection > 0 && _currentNote + 1 >= _notesToArp.size())
-                {
-                    currentDirection = -1;
-                }
 
-                _currentNote += currentDirection;
-            }
-            else if (_arpMode == ArpModes::Random)
+            auto notes = std::vector<unsigned char>(_channels[channel]._notesToArp);
+
+            if (_channels[channel]._arpMode != ArpModes::Order)
             {
-                _currentNote = std::rand() % _notesToArp.size();
+                std::sort(notes.begin(), notes.end());
+            }
+
+            if (_channels[channel]._noteLength > 1.0f) _channels[channel]._noteLength = 1.0f;
+            if (_channels[channel]._noteLength <= 0.0f) _channels[channel]._noteLength = 0.01f;
+
+            if (lastPlayerNote != 0 && diff.count() > (msBetweenNotes * _channels[channel]._noteLength))
+            {
+                unsigned char state = MIDI_NOTE_OFF | channel;
+
+                std::vector<unsigned char> message = {
+                    state,
+                    lastPlayerNote,
+                    0,
+                };
+                _midiout->sendMessage(&message);
+                lastPlayerNote = 0;
+            }
+
+            if (diff.count() > msBetweenNotes)
+            {
+                unsigned char state = MIDI_NOTE_ON | channel;
+
+                lastPlayerNote = notes[_channels[channel]._currentNote];
+                std::vector<unsigned char> message = {
+                    state,
+                    lastPlayerNote,
+                    static_cast<unsigned char>(_channels[channel]._velocity),
+                };
+                _midiout->sendMessage(&message);
+                lastNote = now;
+
+                if (_channels[channel]._arpMode == ArpModes::Up || _channels[channel]._arpMode == ArpModes::Order)
+                {
+                    _channels[channel]._currentNote++;
+                    if (_channels[channel]._currentNote >= _channels[channel]._notesToArp.size())
+                    {
+                        _channels[channel]._currentNote = 0;
+                    }
+                }
+                else if (_channels[channel]._arpMode == ArpModes::Down)
+                {
+                    if (_channels[channel]._currentNote == 0)
+                    {
+                        _channels[channel]._currentNote = _channels[channel]._notesToArp.size() - 1;
+                    }
+                    else
+                    {
+                        _channels[channel]._currentNote--;
+                    }
+                }
+                else if (_channels[channel]._arpMode == ArpModes::Inclusive)
+                {
+                    if (currentDirection < 0 && _channels[channel]._currentNote == 0)
+                    {
+                        currentDirection = 1;
+                    }
+                    else if (currentDirection > 0 && _channels[channel]._currentNote + 1 >= _channels[channel]._notesToArp.size())
+                    {
+                        currentDirection = -1;
+                    }
+                    else
+                    {
+                        _channels[channel]._currentNote += currentDirection;
+                    }
+                }
+                else if (_channels[channel]._arpMode == ArpModes::Exclusive)
+                {
+                    if (currentDirection < 0 && _channels[channel]._currentNote == 0)
+                    {
+                        currentDirection = 1;
+                    }
+                    else if (currentDirection > 0 && _channels[channel]._currentNote + 1 >= _channels[channel]._notesToArp.size())
+                    {
+                        currentDirection = -1;
+                    }
+
+                    _channels[channel]._currentNote += currentDirection;
+                }
+                else if (_channels[channel]._arpMode == ArpModes::Random)
+                {
+                    _channels[channel]._currentNote = std::rand() % _channels[channel]._notesToArp.size();
+                }
             }
         }
     }
@@ -244,14 +273,19 @@ void App::OnFrame()
         recordMode = false;
         if (pauseMode)
         {
-            for (auto &note : _notesToArp)
+            for (unsigned char i = 0; i < MIDI_CHANNEL_COUNT; i++)
             {
-                std::vector<unsigned char> message = {
-                    128,
-                    note,
-                    0,
-                };
-                _midiout->sendMessage(&message);
+                for (auto &note : _channels[i]._notesToArp)
+                {
+                    unsigned char state = MIDI_NOTE_OFF | i;
+
+                    std::vector<unsigned char> message = {
+                        state,
+                        note,
+                        0,
+                    };
+                    _midiout->sendMessage(&message);
+                }
             }
         }
     }
@@ -278,19 +312,30 @@ void App::OnFrame()
         recordMode = !recordMode;
         if (recordMode)
         {
-            for (auto &note : _notesToArp)
+            for (unsigned char i = 0; i < MIDI_CHANNEL_COUNT; i++)
             {
-                std::vector<unsigned char> message = {
-                    128,
-                    note,
-                    0,
-                };
-                _midiout->sendMessage(&message);
+                for (auto &note : _channels[i]._notesToArp)
+                {
+                    unsigned char state = MIDI_NOTE_OFF | i;
+
+                    std::vector<unsigned char> message = {
+                        state,
+                        note,
+                        0,
+                    };
+                    _midiout->sendMessage(&message);
+                }
+                _channels[i]._notesToArp.clear();
+                _channels[i]._currentNote = 0;
             }
-            _notesToArp.clear();
-            _currentNote = 0;
         }
     }
+
+    ImGui::SameLine();
+
+    ImGui::SliderFloat("BPM", &_bpm, 80.0f, 180.0f);
+
+    ImGui::Separator();
 
     ImGui::BeginGroup();
     ImGui::Text("Midi output");
@@ -312,54 +357,75 @@ void App::OnFrame()
 
     ImGui::Separator();
 
+    ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
+    if (ImGui::BeginTabBar("MyTabBar", tab_bar_flags))
+    {
+        for (int i = 0; i < MIDI_CHANNEL_COUNT; i++)
+        {
+            std::stringstream ss;
+            ss << "CH " << (i + 1);
+            ImGui::PushID(i);
+            if (ImGui::BeginTabItem(ss.str().c_str()))
+            {
+                RenderChannel(i);
+                ImGui::EndTabItem();
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTabBar();
+    }
+
+    ImGui::End();
+    ImGui::PopStyleColor(2);
+}
+
+void App::RenderChannel(
+    int channel)
+{
     ImGui::BeginGroup();
-    ImGui::Text("Arp Mode");
-    ImGui::RadioButton("Up", &_arpMode, ArpModes::Up);
+    ImGui::Text("Arp Mode for channel %d", channel + 1);
+    ImGui::RadioButton("Up", &(_channels[channel]._arpMode), ArpModes::Up);
 
     ImGui::SameLine();
 
-    ImGui::RadioButton("Down", &_arpMode, ArpModes::Down);
+    ImGui::RadioButton("Down", &(_channels[channel]._arpMode), ArpModes::Down);
 
     ImGui::SameLine();
 
-    ImGui::RadioButton("Inclusive up/down", &_arpMode, ArpModes::Inclusive);
+    ImGui::RadioButton("Inclusive up/down", &(_channels[channel]._arpMode), ArpModes::Inclusive);
 
     ImGui::SameLine();
 
-    ImGui::RadioButton("Exclusive up/down", &_arpMode, ArpModes::Exclusive);
+    ImGui::RadioButton("Exclusive up/down", &(_channels[channel]._arpMode), ArpModes::Exclusive);
 
     ImGui::SameLine();
 
-    ImGui::RadioButton("Random", &_arpMode, ArpModes::Random);
+    ImGui::RadioButton("Random", &(_channels[channel]._arpMode), ArpModes::Random);
 
     ImGui::SameLine();
 
-    ImGui::RadioButton("Order", &_arpMode, ArpModes::Order);
+    ImGui::RadioButton("Order", &(_channels[channel]._arpMode), ArpModes::Order);
     ImGui::EndGroup();
 
     ImGui::Separator();
 
-    ImGui::Knob("BPM", &_bpm, 80.0f, 180.0f, ImVec2(80.0f, 60.0f));
+    ImGui::KnobUchar("Velocity", &(_channels[channel]._velocity), 0, 127, ImVec2(80.0f, 60.0f));
 
     ImGui::SameLine();
 
-    ImGui::KnobUchar("Octave", &_octaveShift, 0, 8, ImVec2(80.0f, 60.0f));
+    ImGui::KnobInt("Octave shift", &(_channels[channel]._octaveShift), 0, 8, ImVec2(80.0f, 60.0f));
 
     ImGui::SameLine();
 
-    ImGui::KnobUchar("Velocity", &_velocity, 0, 127, ImVec2(80.0f, 60.0f));
-
-    ImGui::SameLine();
-
-    ImGui::Knob("Note length", &_noteLength, 0.01f, 0.99f, ImVec2(80.0f, 60.0f));
+    ImGui::Knob("Note length", &(_channels[channel]._noteLength), 0.01f, 0.99f, ImVec2(80.0f, 60.0f));
 
     ImGui::SameLine();
 
     ImGui::BeginGroup();
-    ImGui::Text("Operations on recorded notes");
+    ImGui::Text("Operations on recorded notes for channel %d", channel + 1);
     if (ImGui::Button("octave down"))
     {
-        for (auto &note : _notesToArp)
+        for (auto &note : _channels[channel]._notesToArp)
         {
             note -= 12;
         }
@@ -369,7 +435,7 @@ void App::OnFrame()
 
     if (ImGui::Button("octave up"))
     {
-        for (auto &note : _notesToArp)
+        for (auto &note : _channels[channel]._notesToArp)
         {
             note += 12;
         }
@@ -379,7 +445,7 @@ void App::OnFrame()
 
     if (ImGui::Button("note down"))
     {
-        for (auto &note : _notesToArp)
+        for (auto &note : _channels[channel]._notesToArp)
         {
             note -= 1;
         }
@@ -389,7 +455,7 @@ void App::OnFrame()
 
     if (ImGui::Button("note up"))
     {
-        for (auto &note : _notesToArp)
+        for (auto &note : _channels[channel]._notesToArp)
         {
             note += 1;
         }
@@ -406,11 +472,11 @@ void App::OnFrame()
 
         ImGui::SameLine();
 
-        PianoKey("C#", Note_CSharp_OffsetFromC, _velocity);
+        PianoKey(channel, "C#", Note_CSharp_OffsetFromC, _channels[channel]._velocity);
 
         ImGui::SameLine();
 
-        PianoKey("D#", Note_DSharp_OffsetFromC, _velocity);
+        PianoKey(channel, "D#", Note_DSharp_OffsetFromC, _channels[channel]._velocity);
 
         ImGui::SameLine();
 
@@ -418,62 +484,64 @@ void App::OnFrame()
 
         ImGui::SameLine();
 
-        PianoKey("F#", Note_FSharp_OffsetFromC, _velocity);
+        PianoKey(channel, "F#", Note_FSharp_OffsetFromC, _channels[channel]._velocity);
 
         ImGui::SameLine();
 
-        PianoKey("G#", Note_GSharp_OffsetFromC, _velocity);
+        PianoKey(channel, "G#", Note_GSharp_OffsetFromC, _channels[channel]._velocity);
 
         ImGui::SameLine();
 
-        PianoKey("A#", Note_ASharp_OffsetFromC, _velocity);
+        PianoKey(channel, "A#", Note_ASharp_OffsetFromC, _channels[channel]._velocity);
     }
 
     { // Bottom Row
 
-        PianoKey("C", Note_C_OffsetFromC, _velocity);
+        PianoKey(channel, "C", Note_C_OffsetFromC, _channels[channel]._velocity);
 
         ImGui::SameLine();
 
-        PianoKey("D", Note_D_OffsetFromC, _velocity);
+        PianoKey(channel, "D", Note_D_OffsetFromC, _channels[channel]._velocity);
 
         ImGui::SameLine();
 
-        PianoKey("E", Note_E_OffsetFromC, _velocity);
+        PianoKey(channel, "E", Note_E_OffsetFromC, _channels[channel]._velocity);
 
         ImGui::SameLine();
 
-        PianoKey("F", Note_F_OffsetFromC, _velocity);
+        PianoKey(channel, "F", Note_F_OffsetFromC, _channels[channel]._velocity);
 
         ImGui::SameLine();
 
-        PianoKey("G", Note_G_OffsetFromC, _velocity);
+        PianoKey(channel, "G", Note_G_OffsetFromC, _channels[channel]._velocity);
 
         ImGui::SameLine();
 
-        PianoKey("A", Note_A_OffsetFromC, _velocity);
+        PianoKey(channel, "A", Note_A_OffsetFromC, _channels[channel]._velocity);
 
         ImGui::SameLine();
 
-        PianoKey("B", Note_B_OffsetFromC, _velocity);
+        PianoKey(channel, "B", Note_B_OffsetFromC, _channels[channel]._velocity);
     }
 
     ImGui::PopStyleVar();
-
-    ImGui::End();
-    ImGui::PopStyleColor(2);
 }
 
 void App::OnExit()
 {
-    for (auto &note : _notesToArp)
+    for (unsigned char i = 0; i < MIDI_CHANNEL_COUNT; i++)
     {
-        std::vector<unsigned char> message = {
-            128,
-            note,
-            0,
-        };
-        _midiout->sendMessage(&message);
+        for (auto &note : _channels[i]._notesToArp)
+        {
+            unsigned char state = MIDI_NOTE_OFF | i;
+
+            std::vector<unsigned char> message = {
+                state,
+                note,
+                0,
+            };
+            _midiout->sendMessage(&message);
+        }
     }
 
     _midiout->closePort();

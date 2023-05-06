@@ -1,9 +1,9 @@
 #include "imgui_knob.h"
 
-#include <iostream>
 #include <cmath>
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <iostream>
 #include <stdio.h>
 #include <vector>
 
@@ -249,13 +249,13 @@ bool ImGui::KnobInt(
     bool is_hovered = ImGui::IsItemActive();
     if (is_active && io.MouseDelta.y != 0.0f)
     {
-        int step = (v_max - v_min) / 127;
+        int step = int((float(v_max) - float(v_min)) / float(v_max));
         int newVal = static_cast<int>(*p_value - io.MouseDelta.y * step);
         if (newVal < v_min)
             newVal = v_min;
         if (newVal > v_max)
             newVal = v_max;
-        *p_value = static_cast<unsigned char>(newVal);
+        *p_value = newVal;
         value_changed = true;
     }
 
@@ -285,15 +285,15 @@ bool ImGui::KnobInt(
         ImGui::BeginTooltip();
         if (tooltip != nullptr)
         {
-            ImGui::Text("%s\nValue : %d", tooltip, static_cast<unsigned int>(*p_value));
+            ImGui::Text("%s\nValue : %d", tooltip, (*p_value));
         }
         else if (showLabel)
         {
-            ImGui::Text("%s %d", label, static_cast<unsigned int>(*p_value));
+            ImGui::Text("%s %d", label, (*p_value));
         }
         else
         {
-            ImGui::Text("%d", static_cast<unsigned int>(*p_value));
+            ImGui::Text("%d", (*p_value));
         }
         ImGui::EndTooltip();
     }
