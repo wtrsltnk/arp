@@ -4,7 +4,7 @@
 #include <chrono>
 #include <glad/glad.h>
 #include <imgui.h>
-#include <sstream>>
+#include <sstream>
 
 #include "imgui_knob.h"
 
@@ -56,9 +56,15 @@ void App::OnInit()
             error.printMessage();
         }
     }
+
+    tChannel channel;
+    channel._name = "First Arp";
+    _channels.push_back(channel);
 }
 
-void App::OnResize(int width, int height)
+void App::OnResize(
+    int width,
+    int height)
 {
     _width = width;
     _height = height;
@@ -74,18 +80,18 @@ const unsigned char MIDI_NOTE_ON = 144;
 const unsigned char MIDI_NOTE_OFF = 128;
 
 void App::PianoKey(
-    unsigned char channel,
+    struct tChannel &ch,
     const char *label,
     int noteNumberInOctave,
     unsigned char velocity)
 {
-    unsigned char note = firstKeyNoteNumber + (_channels[channel]._octaveShift * 12) + noteNumberInOctave;
+    unsigned char note = firstKeyNoteNumber + (ch._octaveShift * 12) + noteNumberInOctave;
 
     ImGui::Button(label, buttonSize);
 
     if (notesDown.find(note) == notesDown.end() && ImGui::IsItemClicked())
     {
-        unsigned char state = MIDI_NOTE_ON | channel;
+        unsigned char state = MIDI_NOTE_ON | ch._channel;
 
         std::vector<unsigned char> message = {
             state,
@@ -96,12 +102,12 @@ void App::PianoKey(
         notesDown.insert(note);
         if (recordMode)
         {
-            _channels[channel]._notesToArp.push_back(note);
+            ch._notesToArp.push_back(note);
         }
     }
     else if (notesDown.find(note) != notesDown.end() && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
     {
-        unsigned char state = MIDI_NOTE_OFF | channel;
+        unsigned char state = MIDI_NOTE_OFF | ch._channel;
 
         std::vector<unsigned char> message = {
             state,
@@ -111,6 +117,12 @@ void App::PianoKey(
         _midiout->sendMessage(&message);
         notesDown.erase(note);
     }
+}
+
+void App::RemoveChannel(
+    struct tChannel &ch)
+{
+    _channelToRemove = &ch;
 }
 
 enum ArpModes
@@ -123,7 +135,7 @@ enum ArpModes
     Order = 5,
 };
 
-void App::OnFrame()
+void App::RunNotes()
 {
     int msBetweenNotes = int(60000.0f / _bpm);
 
@@ -136,26 +148,26 @@ void App::OnFrame()
 
     if (!pauseMode && !recordMode)
     {
-        for (int channel = 0; channel < MIDI_CHANNEL_COUNT; channel++)
+        for (auto &ch : _channels)
         {
-            if (_channels[channel]._notesToArp.empty())
+            if (ch._notesToArp.empty())
             {
                 continue;
             }
 
-            auto notes = std::vector<unsigned char>(_channels[channel]._notesToArp);
+            auto notes = std::vector<unsigned char>(ch._notesToArp);
 
-            if (_channels[channel]._arpMode != ArpModes::Order)
+            if (ch._arpMode != ArpModes::Order)
             {
                 std::sort(notes.begin(), notes.end());
             }
 
-            if (_channels[channel]._noteLength > 1.0f) _channels[channel]._noteLength = 1.0f;
-            if (_channels[channel]._noteLength <= 0.0f) _channels[channel]._noteLength = 0.01f;
+            if (ch._noteLength > 1.0f) ch._noteLength = 1.0f;
+            if (ch._noteLength <= 0.0f) ch._noteLength = 0.01f;
 
-            if (lastPlayerNote != 0 && diff.count() > (msBetweenNotes * _channels[channel]._noteLength))
+            if (lastPlayerNote != 0 && diff.count() > (msBetweenNotes * ch._noteLength))
             {
-                unsigned char state = MIDI_NOTE_OFF | channel;
+                unsigned char state = MIDI_NOTE_OFF | ch._channel;
 
                 std::vector<unsigned char> message = {
                     state,
@@ -168,67 +180,67 @@ void App::OnFrame()
 
             if (diff.count() > msBetweenNotes)
             {
-                unsigned char state = MIDI_NOTE_ON | channel;
+                unsigned char state = MIDI_NOTE_ON | ch._channel;
 
-                lastPlayerNote = notes[_channels[channel]._currentNote];
+                lastPlayerNote = notes[ch._currentNote];
                 std::vector<unsigned char> message = {
                     state,
                     lastPlayerNote,
-                    static_cast<unsigned char>(_channels[channel]._velocity),
+                    static_cast<unsigned char>(ch._velocity),
                 };
                 _midiout->sendMessage(&message);
                 lastNote = now;
 
-                if (_channels[channel]._arpMode == ArpModes::Up || _channels[channel]._arpMode == ArpModes::Order)
+                if (ch._arpMode == ArpModes::Up || ch._arpMode == ArpModes::Order)
                 {
-                    _channels[channel]._currentNote++;
-                    if (_channels[channel]._currentNote >= _channels[channel]._notesToArp.size())
+                    ch._currentNote++;
+                    if (ch._currentNote >= ch._notesToArp.size())
                     {
-                        _channels[channel]._currentNote = 0;
+                        ch._currentNote = 0;
                     }
                 }
-                else if (_channels[channel]._arpMode == ArpModes::Down)
+                else if (ch._arpMode == ArpModes::Down)
                 {
-                    if (_channels[channel]._currentNote == 0)
+                    if (ch._currentNote == 0)
                     {
-                        _channels[channel]._currentNote = _channels[channel]._notesToArp.size() - 1;
+                        ch._currentNote = ch._notesToArp.size() - 1;
                     }
                     else
                     {
-                        _channels[channel]._currentNote--;
+                        ch._currentNote--;
                     }
                 }
-                else if (_channels[channel]._arpMode == ArpModes::Inclusive)
+                else if (ch._arpMode == ArpModes::Inclusive)
                 {
-                    if (currentDirection < 0 && _channels[channel]._currentNote == 0)
+                    if (currentDirection < 0 && ch._currentNote == 0)
                     {
                         currentDirection = 1;
                     }
-                    else if (currentDirection > 0 && _channels[channel]._currentNote + 1 >= _channels[channel]._notesToArp.size())
+                    else if (currentDirection > 0 && ch._currentNote + 1 >= ch._notesToArp.size())
                     {
                         currentDirection = -1;
                     }
                     else
                     {
-                        _channels[channel]._currentNote += currentDirection;
+                        ch._currentNote += currentDirection;
                     }
                 }
-                else if (_channels[channel]._arpMode == ArpModes::Exclusive)
+                else if (ch._arpMode == ArpModes::Exclusive)
                 {
-                    if (currentDirection < 0 && _channels[channel]._currentNote == 0)
+                    if (currentDirection < 0 && ch._currentNote == 0)
                     {
                         currentDirection = 1;
                     }
-                    else if (currentDirection > 0 && _channels[channel]._currentNote + 1 >= _channels[channel]._notesToArp.size())
+                    else if (currentDirection > 0 && ch._currentNote + 1 >= ch._notesToArp.size())
                     {
                         currentDirection = -1;
                     }
 
-                    _channels[channel]._currentNote += currentDirection;
+                    ch._currentNote += currentDirection;
                 }
-                else if (_channels[channel]._arpMode == ArpModes::Random)
+                else if (ch._arpMode == ArpModes::Random)
                 {
-                    _channels[channel]._currentNote = std::rand() % _channels[channel]._notesToArp.size();
+                    ch._currentNote = std::rand() % ch._notesToArp.size();
                 }
             }
         }
@@ -237,6 +249,11 @@ void App::OnFrame()
     {
         lastNote = now;
     }
+}
+
+void App::OnFrame()
+{
+    RunNotes();
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -273,11 +290,11 @@ void App::OnFrame()
         recordMode = false;
         if (pauseMode)
         {
-            for (unsigned char i = 0; i < MIDI_CHANNEL_COUNT; i++)
+            for (auto &ch : _channels)
             {
-                for (auto &note : _channels[i]._notesToArp)
+                for (auto &note : ch._notesToArp)
                 {
-                    unsigned char state = MIDI_NOTE_OFF | i;
+                    unsigned char state = MIDI_NOTE_OFF | ch._channel;
 
                     std::vector<unsigned char> message = {
                         state,
@@ -312,11 +329,11 @@ void App::OnFrame()
         recordMode = !recordMode;
         if (recordMode)
         {
-            for (unsigned char i = 0; i < MIDI_CHANNEL_COUNT; i++)
+            for (auto &ch : _channels)
             {
-                for (auto &note : _channels[i]._notesToArp)
+                for (auto &note : ch._notesToArp)
                 {
-                    unsigned char state = MIDI_NOTE_OFF | i;
+                    unsigned char state = MIDI_NOTE_OFF | ch._channel;
 
                     std::vector<unsigned char> message = {
                         state,
@@ -325,8 +342,8 @@ void App::OnFrame()
                     };
                     _midiout->sendMessage(&message);
                 }
-                _channels[i]._notesToArp.clear();
-                _channels[i]._currentNote = 0;
+                ch._notesToArp.clear();
+                ch._currentNote = 0;
             }
         }
     }
@@ -340,7 +357,11 @@ void App::OnFrame()
     ImGui::BeginGroup();
     ImGui::Text("Midi output");
     static int e = 0;
-    ImGui::RadioButton("No Midi output", &e, 0);
+    if (ImGui::RadioButton("No Midi output", &e, 0) && _midiout->isPortOpen())
+    {
+        _midiout->closePort();
+    }
+
     for (size_t i = 0; i < _portNames.size(); i++)
     {
         ImGui::SameLine();
@@ -357,75 +378,226 @@ void App::OnFrame()
 
     ImGui::Separator();
 
-    ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
+    ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None | ImGuiTabBarFlags_AutoSelectNewTabs;
     if (ImGui::BeginTabBar("MyTabBar", tab_bar_flags))
     {
-        for (int i = 0; i < MIDI_CHANNEL_COUNT; i++)
+        for (auto &ch : _channels)
         {
-            std::stringstream ss;
-            ss << "CH " << (i + 1);
-            ImGui::PushID(i);
-            if (ImGui::BeginTabItem(ss.str().c_str()))
+            if (ImGui::BeginTabItem(ch._name.c_str(), nullptr))
             {
-                RenderChannel(i);
+                RenderChannel(ch);
                 ImGui::EndTabItem();
             }
-            ImGui::PopID();
+        }
+
+        if (ImGui::BeginTabItem("+"))
+        {
+            static char buf[64] = {0};
+            static const char *error = nullptr;
+            ImGui::InputText("Name", buf, 64);
+
+            if (ImGui::Button("Create"))
+            {
+                error = nullptr;
+                struct tChannel channel;
+                channel._name = buf;
+                for (auto &ch : _channels)
+                {
+                    if (ch._name == channel._name)
+                    {
+                        error = "Name already exists";
+                        break;
+                    }
+                }
+
+                if (error == nullptr)
+                {
+                    _channels.push_back(channel);
+                    memset(buf, 0, 64);
+                }
+            }
+
+            if (error != nullptr)
+            {
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", error);
+            }
+
+            ImGui::EndTabItem();
         }
         ImGui::EndTabBar();
     }
 
     ImGui::End();
     ImGui::PopStyleColor(2);
+
+    if (_channelToRemove != nullptr)
+    {
+        for (auto channel = _channels.begin(); channel != _channels.end(); ++channel)
+        {
+            if (channel->_name == _channelToRemove->_name)
+            {
+                _channels.erase(channel);
+                _channelToRemove = nullptr;
+                break;
+            }
+        }
+    }
 }
 
 void App::RenderChannel(
-    int channel)
+    struct tChannel &ch)
 {
+    ImGui::SetNextItemWidth(200);
+
+    static ImGuiComboFlags flags = 0;
+
+    const char *channels[] = {
+        "Midi channel 1",
+        "Midi channel 2",
+        "Midi channel 3",
+        "Midi channel 4",
+        "Midi channel 5",
+        "Midi channel 6",
+        "Midi channel 7",
+        "Midi channel 8",
+        "Midi channel 9",
+        "Midi channel 10",
+        "Midi channel 11",
+        "Midi channel 12",
+        "Midi channel 13",
+        "Midi channel 14",
+        "Midi channel 15",
+        "Midi channel 16",
+    };
+
+    const char *combo_label = channels[ch._channel];
+
+    if (ImGui::BeginCombo("##Channel", combo_label, flags))
+    {
+        for (int i = 0; i < 16; i++)
+        {
+            const bool is_selected = (ch._channel == i);
+            if (ImGui::Selectable(channels[i], is_selected))
+            {
+                ch._channel = i;
+            }
+
+            if (is_selected)
+            {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    ImGui::SameLine();
+
+    static char buf[64] = {0};
+    if (ImGui::Button("Change name"))
+    {
+        strcpy_s(buf, 64, ch._name.c_str());
+        ImGui::OpenPopup("Change the name");
+    }
+
+    ImGui::SameLine(ImGui::GetWindowWidth() - 55);
+
+    if (ImGui::Button("x", ImVec2(30.0f, 0.0f)))
+    {
+        RemoveChannel(ch);
+    }
+
+    if (ImGui::BeginPopupModal("Change the name", nullptr, ImGuiWindowFlags_NoResize))
+    {
+        static const char *error = nullptr;
+        ImGui::InputText("##Name", buf, 64);
+
+        if (error != nullptr)
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", error);
+        }
+        else
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "");
+        }
+
+        if (ImGui::Button("OK", ImVec2(120, 0)))
+        {
+            error = nullptr;
+
+            for (auto &subch : _channels)
+            {
+                if (&ch == &subch)
+                {
+                    continue;
+                }
+                if (subch._name == std::string(buf))
+                {
+                    error = "Name already exists";
+                    break;
+                }
+            }
+
+            if (error == nullptr)
+            {
+                ch._name = buf;
+                memset(buf, 0, 64);
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SetItemDefaultFocus();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+
     ImGui::BeginGroup();
-    ImGui::Text("Arp Mode for channel %d", channel + 1);
-    ImGui::RadioButton("Up", &(_channels[channel]._arpMode), ArpModes::Up);
+    ImGui::Text("Arp Mode");
+    ImGui::RadioButton("Up", &(ch._arpMode), ArpModes::Up);
 
     ImGui::SameLine();
 
-    ImGui::RadioButton("Down", &(_channels[channel]._arpMode), ArpModes::Down);
+    ImGui::RadioButton("Down", &(ch._arpMode), ArpModes::Down);
 
     ImGui::SameLine();
 
-    ImGui::RadioButton("Inclusive up/down", &(_channels[channel]._arpMode), ArpModes::Inclusive);
+    ImGui::RadioButton("Inclusive up/down", &(ch._arpMode), ArpModes::Inclusive);
 
     ImGui::SameLine();
 
-    ImGui::RadioButton("Exclusive up/down", &(_channels[channel]._arpMode), ArpModes::Exclusive);
+    ImGui::RadioButton("Exclusive up/down", &(ch._arpMode), ArpModes::Exclusive);
 
     ImGui::SameLine();
 
-    ImGui::RadioButton("Random", &(_channels[channel]._arpMode), ArpModes::Random);
+    ImGui::RadioButton("Random", &(ch._arpMode), ArpModes::Random);
 
     ImGui::SameLine();
 
-    ImGui::RadioButton("Order", &(_channels[channel]._arpMode), ArpModes::Order);
+    ImGui::RadioButton("Order", &(ch._arpMode), ArpModes::Order);
     ImGui::EndGroup();
 
     ImGui::Separator();
 
-    ImGui::KnobUchar("Velocity", &(_channels[channel]._velocity), 0, 127, ImVec2(80.0f, 60.0f));
+    ImGui::KnobUchar("Velocity", &(ch._velocity), 0, 127, ImVec2(80.0f, 60.0f));
 
     ImGui::SameLine();
 
-    ImGui::KnobInt("Octave shift", &(_channels[channel]._octaveShift), 0, 8, ImVec2(80.0f, 60.0f));
+    ImGui::KnobInt("Octave shift", &(ch._octaveShift), 0, 8, ImVec2(80.0f, 60.0f));
 
     ImGui::SameLine();
 
-    ImGui::Knob("Note length", &(_channels[channel]._noteLength), 0.01f, 0.99f, ImVec2(80.0f, 60.0f));
+    ImGui::Knob("Note length", &(ch._noteLength), 0.01f, 0.99f, ImVec2(80.0f, 60.0f));
 
     ImGui::SameLine();
 
     ImGui::BeginGroup();
-    ImGui::Text("Operations on recorded notes for channel %d", channel + 1);
+    ImGui::Text("Operations on recorded notes");
     if (ImGui::Button("octave down"))
     {
-        for (auto &note : _channels[channel]._notesToArp)
+        for (auto &note : ch._notesToArp)
         {
             note -= 12;
         }
@@ -435,7 +607,7 @@ void App::RenderChannel(
 
     if (ImGui::Button("octave up"))
     {
-        for (auto &note : _channels[channel]._notesToArp)
+        for (auto &note : ch._notesToArp)
         {
             note += 12;
         }
@@ -445,7 +617,7 @@ void App::RenderChannel(
 
     if (ImGui::Button("note down"))
     {
-        for (auto &note : _channels[channel]._notesToArp)
+        for (auto &note : ch._notesToArp)
         {
             note -= 1;
         }
@@ -455,7 +627,7 @@ void App::RenderChannel(
 
     if (ImGui::Button("note up"))
     {
-        for (auto &note : _channels[channel]._notesToArp)
+        for (auto &note : ch._notesToArp)
         {
             note += 1;
         }
@@ -472,11 +644,11 @@ void App::RenderChannel(
 
         ImGui::SameLine();
 
-        PianoKey(channel, "C#", Note_CSharp_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "C#", Note_CSharp_OffsetFromC, ch._velocity);
 
         ImGui::SameLine();
 
-        PianoKey(channel, "D#", Note_DSharp_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "D#", Note_DSharp_OffsetFromC, ch._velocity);
 
         ImGui::SameLine();
 
@@ -484,44 +656,44 @@ void App::RenderChannel(
 
         ImGui::SameLine();
 
-        PianoKey(channel, "F#", Note_FSharp_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "F#", Note_FSharp_OffsetFromC, ch._velocity);
 
         ImGui::SameLine();
 
-        PianoKey(channel, "G#", Note_GSharp_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "G#", Note_GSharp_OffsetFromC, ch._velocity);
 
         ImGui::SameLine();
 
-        PianoKey(channel, "A#", Note_ASharp_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "A#", Note_ASharp_OffsetFromC, ch._velocity);
     }
 
     { // Bottom Row
 
-        PianoKey(channel, "C", Note_C_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "C", Note_C_OffsetFromC, ch._velocity);
 
         ImGui::SameLine();
 
-        PianoKey(channel, "D", Note_D_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "D", Note_D_OffsetFromC, ch._velocity);
 
         ImGui::SameLine();
 
-        PianoKey(channel, "E", Note_E_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "E", Note_E_OffsetFromC, ch._velocity);
 
         ImGui::SameLine();
 
-        PianoKey(channel, "F", Note_F_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "F", Note_F_OffsetFromC, ch._velocity);
 
         ImGui::SameLine();
 
-        PianoKey(channel, "G", Note_G_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "G", Note_G_OffsetFromC, ch._velocity);
 
         ImGui::SameLine();
 
-        PianoKey(channel, "A", Note_A_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "A", Note_A_OffsetFromC, ch._velocity);
 
         ImGui::SameLine();
 
-        PianoKey(channel, "B", Note_B_OffsetFromC, _channels[channel]._velocity);
+        PianoKey(ch, "B", Note_B_OffsetFromC, ch._velocity);
     }
 
     ImGui::PopStyleVar();
@@ -529,11 +701,11 @@ void App::RenderChannel(
 
 void App::OnExit()
 {
-    for (unsigned char i = 0; i < MIDI_CHANNEL_COUNT; i++)
+    for (auto &ch : _channels)
     {
-        for (auto &note : _channels[i]._notesToArp)
+        for (auto &note : ch._notesToArp)
         {
-            unsigned char state = MIDI_NOTE_OFF | i;
+            unsigned char state = MIDI_NOTE_OFF | ch._channel;
 
             std::vector<unsigned char> message = {
                 state,

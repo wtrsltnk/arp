@@ -7,17 +7,23 @@
 #include <stdio.h>
 #include <vector>
 
-ImVec2 operator+(ImVec2 const &a, ImVec2 const &b)
+ImVec2 operator+(
+    ImVec2 const &a,
+    ImVec2 const &b)
 {
     return ImVec2(a.x + b.x, a.y + b.y);
 }
 
-ImVec2 operator-(ImVec2 const &a, ImVec2 const &b)
+ImVec2 operator-(
+    ImVec2 const &a,
+    ImVec2 const &b)
 {
     return ImVec2(a.x - b.x, a.y - b.y);
 }
 
-ImVec4 operator*(ImVec4 const &a, ImVec4 const &b)
+ImVec4 operator*(
+    ImVec4 const &a,
+    ImVec4 const &b)
 {
     return ImVec4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);
 }
@@ -57,6 +63,7 @@ bool ImGui::Knob(
     {
         ImGui::InvisibleButton(label, ImVec2(radius_outer * 2, radius_outer * 2 + (showLabel ? line_height + style.ItemInnerSpacing.y : 0)));
     }
+
     bool value_changed = false;
     bool is_active = ImGui::IsItemActive();
     bool is_hovered = ImGui::IsItemActive();
@@ -148,6 +155,7 @@ bool ImGui::KnobUchar(
     {
         ImGui::InvisibleButton(label, ImVec2(radius_outer * 2, radius_outer * 2 + (showLabel ? line_height + style.ItemInnerSpacing.y : 0)));
     }
+
     bool value_changed = false;
     bool is_active = ImGui::IsItemActive();
     bool is_hovered = ImGui::IsItemActive();
@@ -244,6 +252,7 @@ bool ImGui::KnobInt(
     {
         ImGui::InvisibleButton(label, ImVec2(radius_outer * 2, radius_outer * 2 + (showLabel ? line_height + style.ItemInnerSpacing.y : 0)));
     }
+
     bool value_changed = false;
     bool is_active = ImGui::IsItemActive();
     bool is_hovered = ImGui::IsItemActive();

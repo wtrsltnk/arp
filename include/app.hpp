@@ -7,7 +7,17 @@
 
 #include <RtMidi.h>
 
-#define MIDI_CHANNEL_COUNT 16
+struct tChannel
+{
+    unsigned char _channel = 0;
+    std::string _name;
+    int _arpMode = 0;
+    int _octaveShift = 3;
+    unsigned char _velocity = 100;
+    float _noteLength = 0.4f;
+    std::vector<unsigned char> _notesToArp;
+    size_t _currentNote = 0;
+};
 
 class App
 {
@@ -26,10 +36,12 @@ public:
     template <class T>
     T *GetWindowHandle() const;
 
+    void RunNotes();
+
 protected:
     const std::vector<std::string> &_args;
     int _width = 1024;
-    int _height = 550;
+    int _height = 585;
 
     template <class T>
     void SetWindowHandle(T *handle);
@@ -44,24 +56,20 @@ protected:
     bool recordMode = true;
     float _bpm = 100;
 
-    struct tChannel
-    {
-        int _arpMode = 0;
-        int _octaveShift = 3;
-        unsigned char _velocity = 100;
-        float _noteLength = 0.4f;
-        std::vector<unsigned char> _notesToArp;
-        size_t _currentNote = 0;
-    } _channels[MIDI_CHANNEL_COUNT];
+    std::vector<struct tChannel> _channels;
+    struct tChannel *_channelToRemove = nullptr;
 
     void RenderChannel(
-        int channel);
+        struct tChannel &ch);
 
     void PianoKey(
-        unsigned char channel,
+        struct tChannel &ch,
         const char *label,
         int noteNumberInOctave,
         unsigned char velocity);
+
+    void RemoveChannel(
+        struct tChannel &ch);
 
 private:
     void *_windowHandle;
